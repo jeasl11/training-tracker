@@ -4,20 +4,42 @@
   <meta charset="utf-8">
   <title>Bundled Page</title>
 
-  <!-- ===== Supabase cloud sync (mirrors the app's local data to your account) ===== -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- ===== Supabase cloud sync (mirrors the app's local data to your account) =====
+       Uses plain REST + the login token already in localStorage. No second
+       Supabase client, so nothing can deadlock on the shared auth lock. -->
   <script>
   (function(){
-    const SUPABASE_URL = "https://yaohjueiififikjypvuv.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l";
-    const KEY = "hybrid_tracker_v1";
+    const REST  = "https://yaohjueiififikjypvuv.supabase.co/rest/v1";
+    const ANON  = "sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l";
+    const KEY   = "hybrid_tracker_v1";
     const TABLE = "tracker_state";
-    let sb;
-    try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
-    catch (e) { return; }                                  // no Supabase -> app runs local-only
+
+    // Read the current login token the parent (login page) stored in localStorage.
+    function readSession(){
+      try {
+        let raw = null;
+        for (let i = 0; i < localStorage.length; i++){
+          const k = localStorage.key(i);
+          if (/^sb-.*-auth-token$/.test(k)){ raw = localStorage.getItem(k); break; }
+        }
+        if (!raw) return {};
+        let s = JSON.parse(raw); s = s.currentSession || s;
+        return { token: s.access_token, userId: s.user && s.user.id };
+      } catch (e){ return {}; }
+    }
+    function headers(token, extra){
+      return Object.assign({ apikey: ANON, Authorization: "Bearer " + token, "Content-Type": "application/json" }, extra || {});
+    }
+    function upsert(token, userId, data){
+      return fetch(REST + "/" + TABLE + "?on_conflict=user_id", {
+        method: "POST",
+        headers: headers(token, { Prefer: "resolution=merge-duplicates" }),
+        body: JSON.stringify({ user_id: userId, data: data, updated_at: new Date().toISOString() })
+      });
+    }
 
     const origSet = localStorage.setItem.bind(localStorage);
-    let ready = false, pending = null, timer = null, userId = null;
+    let ready = false, pending = null, timer = null;
 
     // Mirror local writes up to the cloud (debounced), once the initial pull is done.
     localStorage.setItem = function(k, v){
@@ -26,27 +48,28 @@
     };
     function schedule(){ clearTimeout(timer); timer = setTimeout(flush, 700); }
     async function flush(){
-      if (!ready || !userId){ schedule(); return; }        // hold writes until cloud pull finishes
-      try {
-        await sb.from(TABLE).upsert({ user_id: userId, data: JSON.parse(pending), updated_at: new Date().toISOString() });
-      } catch (e) { /* keep local copy; will retry on next change */ }
+      if (!ready){ schedule(); return; }                   // hold writes until cloud pull finishes
+      const { token, userId } = readSession();
+      if (!token || !userId) return;                       // not signed in -> local-only
+      try { await upsert(token, userId, JSON.parse(pending)); }
+      catch (e){ /* keep local copy; will retry on next change */ }
     }
 
     // Pull the cloud copy into localStorage BEFORE the app reads it.
     window.__cloudInit = (async function(){
       try {
-        const { data:{ session } } = await sb.auth.getSession();
-        if (!session) return;                              // not signed in -> local-only
-        userId = session.user.id;
-        const { data, error } = await sb.from(TABLE).select("data").eq("user_id", userId).maybeSingle();
-        if (error) return;
-        if (data && data.data){
-          origSet(KEY, JSON.stringify(data.data));         // seed local with cloud copy
-        } else {
-          const local = localStorage.getItem(KEY);         // first run: push existing local up
-          if (local) await sb.from(TABLE).upsert({ user_id: userId, data: JSON.parse(local), updated_at: new Date().toISOString() });
+        const { token, userId } = readSession();
+        if (!token || !userId) return;                     // not signed in -> local-only
+        const ctrl = new AbortController();
+        const to = setTimeout(function(){ ctrl.abort(); }, 4000);   // never block the app for long
+        const r = await fetch(REST + "/" + TABLE + "?select=data&user_id=eq." + userId, { headers: headers(token), signal: ctrl.signal });
+        clearTimeout(to);
+        if (r.ok){
+          const arr = await r.json();
+          if (arr[0] && arr[0].data){ origSet(KEY, JSON.stringify(arr[0].data)); }   // seed local from cloud
+          else { const local = localStorage.getItem(KEY); if (local) await upsert(token, userId, JSON.parse(local)); }   // first run: push local up
         }
-      } catch (e) { /* fall back to local-only */ }
+      } catch (e){ /* fall back to local-only */ }
       finally { ready = true; }
     })();
   })();
@@ -94,7 +117,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   }, true);
 
   try {
-    if (window.__cloudInit) { try { await window.__cloudInit; } catch (e) {} }   // seed localStorage from cloud first
+    if (window.__cloudInit) {   // seed localStorage from cloud first, but never block the render for long
+      try { await Promise.race([window.__cloudInit, new Promise(function(r){ setTimeout(r, 4500); })]); } catch (e) {}
+    }
     const manifestEl = document.querySelector('script[type="__bundler/manifest"]');
     const templateEl = document.querySelector('script[type="__bundler/template"]');
     if (!manifestEl || !templateEl) {
