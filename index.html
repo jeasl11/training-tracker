@@ -68,7 +68,7 @@ function showApp(){
   $("login").classList.add("hidden");
   $("logout").classList.remove("hidden");
   const f = $("appFrame");
-  if(!f.getAttribute("src")) f.setAttribute("src", "app.html");   // load your bundled tracker once
+  if(!f.getAttribute("src")) f.setAttribute("src", "app.html?v=" + Date.now());   // always load a fresh copy (defeats stale cache)
   f.classList.remove("hidden");
 }
 async function refresh(){
