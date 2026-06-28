@@ -50,11 +50,13 @@
   <!-- ====== LOGIN ====== -->
   <div id="login" class="hidden">
     <h1>Hybrid Tracker</h1>
-    <p class="muted">Enter your email to get a one-time sign-in link. Only the registered account works.</p>
+    <p class="muted">Sign in with your email and password. Only the registered account works.</p>
     <div class="card">
       <input type="email" id="email" placeholder="you@email.com" autocomplete="email">
       <div style="height:12px"></div>
-      <button id="sendLink">Email me a link</button>
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+      <div style="height:12px"></div>
+      <button id="signIn">Sign in</button>
       <p id="loginMsg" class="muted center" style="margin:12px 0 0"></p>
     </div>
   </div>
@@ -196,21 +198,20 @@ function showApp(){
   renderStatic(); loadToday(); loadStreak(); loadLastMeas();
 }
 
-$("sendLink").onclick = async () => {
+$("signIn").onclick = async () => {
   const email = $("email").value.trim();
-  if(!email){ return; }
-  $("loginMsg").textContent = "Sending...";
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: false,                              // strangers cannot create an account
-      emailRedirectTo: window.location.origin + "/training-tracker/"  // land back on the live Pages site
-    }
-  });
-  $("loginMsg").innerHTML = error
-    ? `<span class="err">${error.message}. (Only the registered account can sign in.)</span>`
-    : `<span class="ok">Check your email for the sign-in link.</span>`;
+  const password = $("password").value;
+  if(!email || !password){ $("loginMsg").innerHTML = '<span class="err">Enter your email and password.</span>'; return; }
+  $("loginMsg").textContent = "Signing in...";
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){
+    $("loginMsg").innerHTML = `<span class="err">${error.message}</span>`;
+  } else {
+    $("loginMsg").innerHTML = '<span class="ok">Signed in.</span>';
+    refresh();
+  }
 };
+$("password").addEventListener("keydown", e => { if(e.key === "Enter") $("signIn").click(); });
 $("logout").onclick = async () => { await sb.auth.signOut(); showLogin(); };
 sb.auth.onAuthStateChange((_e,_s)=>refresh());
 
