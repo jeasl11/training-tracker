@@ -202,7 +202,10 @@ $("sendLink").onclick = async () => {
   $("loginMsg").textContent = "Sending...";
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: false }   // strangers cannot create an account
+    options: {
+      shouldCreateUser: false,                              // strangers cannot create an account
+      emailRedirectTo: window.location.origin + "/training-tracker/"  // land back on the live Pages site
+    }
   });
   $("loginMsg").innerHTML = error
     ? `<span class="err">${error.message}. (Only the registered account can sign in.)</span>`
