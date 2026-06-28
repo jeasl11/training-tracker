@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Hybrid Tracker</title>
+<style>
+  :root{ --bg:#0f1115; --card:#1a1d24; --line:#2a2e38; --ink:#e8eaed; --sub:#9aa0aa;
+         --accent:#4f8cff; --good:#3ecf8e; --warn:#e2b04a; --race:#ff5d5d; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:560px;margin:0 auto;padding:18px 16px 60px}
+  h1{font-size:20px;margin:0 0 2px} h2{font-size:14px;color:var(--sub);font-weight:600;margin:22px 0 8px;
+     text-transform:uppercase;letter-spacing:.04em}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+  .muted{color:var(--sub);font-size:13px}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  label.chk{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:15px}
+  input[type=checkbox]{width:22px;height:22px;accent-color:var(--good)}
+  input[type=number],input[type=email]{background:#11141a;border:1px solid var(--line);color:var(--ink);
+     border-radius:9px;padding:10px 12px;font-size:15px;width:110px;text-align:right}
+  input[type=email]{width:100%;text-align:left}
+  .field{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+  .field:last-child{border-bottom:none}
+  button{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px 16px;font-size:15px;
+     font-weight:600;cursor:pointer;width:100%}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--sub)}
+  button:active{opacity:.85}
+  .pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#252a34;color:var(--sub)}
+  .big{font-size:34px;font-weight:800;line-height:1}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .session{font-size:17px;font-weight:700}
+  .race{color:var(--race)!important}
+  .hist{font-size:13px;color:var(--sub)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#3a3f4a;margin-left:3px}
+  .dot.on{background:var(--good)}
+  .ok{color:var(--good)} .err{color:var(--race)}
+  .center{text-align:center}
+  a{color:var(--accent)}
+  .hidden{display:none}
+  .save-row{display:flex;gap:10px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ====== LOGIN ====== -->
+  <div id="login" class="hidden">
+    <h1>Hybrid Tracker</h1>
+    <p class="muted">Enter your email to get a one-time sign-in link. Only the registered account works.</p>
+    <div class="card">
+      <input type="email" id="email" placeholder="you@email.com" autocomplete="email">
+      <div style="height:12px"></div>
+      <button id="sendLink">Email me a link</button>
+      <p id="loginMsg" class="muted center" style="margin:12px 0 0"></p>
+    </div>
+  </div>
+
+  <!-- ====== APP ====== -->
+  <div id="app" class="hidden">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <h1>Hybrid Tracker</h1>
+        <div class="muted" id="todayLabel"></div>
+      </div>
+      <span class="pill" id="phasePill"></span>
+    </div>
+
+    <!-- 75 Medium -->
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="muted">75 MEDIUM</div>
+          <div class="big" id="medDay">--</div>
+          <div class="muted" id="medLeft"></div>
+        </div>
+        <div class="center">
+          <div class="muted">Last 7 days</div>
+          <div id="streakDots" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today's plan -->
+    <h2>Today's session</h2>
+    <div class="card">
+      <div class="session" id="todaySession">--</div>
+      <div class="muted" id="weekInfo"></div>
+    </div>
+
+    <!-- Daily checklist -->
+    <h2>Daily checklist</h2>
+    <div class="card">
+      <div class="row"><label class="chk"><input type="checkbox" id="workout"> Workout (45 min)</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="reading"> Reading (10 pages)</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="water"> Water (1 gallon)</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="no_alcohol"> No alcohol</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="no_junk"> No sweets / fried</label></div>
+      <div class="field"><span>Protein (g) <span class="muted">/ 200</span></span><input type="number" id="protein_g" inputmode="numeric"></div>
+      <div class="field"><span>Calories <span class="muted">/ 2600</span></span><input type="number" id="calories" inputmode="numeric"></div>
+      <div class="save-row">
+        <button id="saveDay">Save today</button>
+      </div>
+      <p id="dayMsg" class="muted center" style="margin:10px 0 0"></p>
+    </div>
+
+    <!-- Measurements -->
+    <h2>Weekly measurements</h2>
+    <div class="card">
+      <div class="grid2">
+        <div class="field"><span>Weight</span><input type="number" id="m_weight" step="0.1"></div>
+        <div class="field"><span>Waist</span><input type="number" id="m_waist" step="0.1"></div>
+        <div class="field"><span>Abs</span><input type="number" id="m_abs" step="0.1"></div>
+        <div class="field"><span>Chest</span><input type="number" id="m_chest" step="0.1"></div>
+        <div class="field"><span>Bicep</span><input type="number" id="m_bicep" step="0.1"></div>
+        <div class="field"><span>Thigh</span><input type="number" id="m_thigh" step="0.1"></div>
+      </div>
+      <div class="save-row"><button id="saveMeas">Log measurements</button></div>
+      <p id="measMsg" class="muted center" style="margin:10px 0 0"></p>
+      <div id="lastMeas" class="hist" style="margin-top:10px"></div>
+    </div>
+
+    <div class="save-row">
+      <button class="ghost" id="logout">Sign out</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===================================================================
+   CONFIG  -  paste your two Supabase values here (both are safe to ship)
+   Project Settings -> API -> Project URL  and  anon public key
+=================================================================== */
+const SUPABASE_URL  = "https://yaohjueiififikjypvuv.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l";
+/* =================================================================== */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- the 24-week plan (same as your spreadsheet) ---------- */
+function buildPlan(){
+  const w=[];
+  const ramp=[[2,3],[2.5,3],[2.5,3.5],[3,4],[3,4]];
+  ramp.forEach(([e,s])=>w.push({phase:"On-Ramp",days:["RIG Legs",`Easy run ${e} mi`,"RIG Upper + TURF",`Easy run ${e} mi`,"RIG Hinge",`Easy run ${s} mi`,"Hybrid"]}));
+  const hig=[[3,4,0],[3,4,0],[3.5,5,0],[3.5,5,0],[4,6,0],[4,"5K RACE","race"],[4.5,7,0],[4.5,8,0],[5,"10K RACE","race"],[5,9,0],[5,10,0],["",("HALF MARATHON"),"half"]];
+  hig.forEach(([t,l,flag])=>{
+    let d;
+    if(flag==="race") d=["RIG Legs",`Easy run ${t} mi`,"RIG Upper + TURF","Easy run 2 mi","Rest",l,"Rest"];
+    else if(flag==="half") d=["RIG Legs","Easy run 4 mi","Easy run / mobility","Easy run 2 mi","Rest",l,"Rest"];
+    else d=["RIG Legs",`Easy run ${t} mi`,"RIG Upper + TURF",`Easy run ${t} mi`,"RIG Hinge",`Long run ${l} mi`,"Hybrid"];
+    w.push({phase:"Higdon Half Build",days:d});
+  });
+  w.push({phase:"Recovery",days:["Rest or easy spin","Easy jog 2-3 mi","TURF","RIG Upper","Rest","Easy jog 3 mi or PAYDAY","Hybrid"]});
+  const hy=["Compromised run: 5x(600m + station)","Compromised run: 6x(800m + station)","Compromised run: 5x(1km + station)","Compromised run: 4x(1km + 2 stations)","Compromised run: 3x(1km @ race pace + station)"];
+  hy.forEach(t=>w.push({phase:"Hyrox-Specific",days:["RIG Legs",t,"TURF","RIG Upper","RIG Hinge","PAYDAY","Hybrid"]}));
+  w.push({phase:"Taper + Race",days:["RIG Legs","Short sharp run intervals","TURF or rest","Rest","Rest or shakeout jog","HYROX (Dec 12)","Done - recover"]});
+  return w;
+}
+const PLAN = buildPlan();
+const PLAN_START = Date.UTC(2026,5,29);   // Mon Jun 29 2026
+const MED_START  = Date.UTC(2026,5,22);   // 75 Medium day 1 = Jun 22 2026
+
+function utcMidnight(d){ return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); }
+function isoDate(d){ return d.toISOString().slice(0,10); }
+
+function sessionFor(date){
+  const diff = Math.round((utcMidnight(date) - PLAN_START)/86400000);
+  if(diff < 0) return {phase:"Before plan", session:"Plan starts Jun 29", week:null};
+  const wk = Math.floor(diff/7), dow = ((diff%7)+7)%7;   // 0 = Monday
+  if(wk >= PLAN.length) return {phase:"Plan complete", session:"-", week:null};
+  return {phase:PLAN[wk].phase, session:PLAN[wk].days[dow], week:wk+1};
+}
+function medDayNumber(date){
+  return Math.floor((utcMidnight(date) - MED_START)/86400000) + 1;
+}
+
+/* ---------------------- DOM helpers ---------------------- */
+const $ = id => document.getElementById(id);
+const today = new Date();
+const todayISO = isoDate(today);
+const CHK = ["workout","reading","water","no_alcohol","no_junk"];
+
+/* ---------------------- AUTH ---------------------- */
+async function refresh(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ showApp(); } else { showLogin(); }
+}
+function showLogin(){ $("login").classList.remove("hidden"); $("app").classList.add("hidden"); }
+function showApp(){
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+  renderStatic(); loadToday(); loadStreak(); loadLastMeas();
+}
+
+$("sendLink").onclick = async () => {
+  const email = $("email").value.trim();
+  if(!email){ return; }
+  $("loginMsg").textContent = "Sending...";
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false }   // strangers cannot create an account
+  });
+  $("loginMsg").innerHTML = error
+    ? `<span class="err">${error.message}. (Only the registered account can sign in.)</span>`
+    : `<span class="ok">Check your email for the sign-in link.</span>`;
+};
+$("logout").onclick = async () => { await sb.auth.signOut(); showLogin(); };
+sb.auth.onAuthStateChange((_e,_s)=>refresh());
+
+/* ---------------------- RENDER ---------------------- */
+function renderStatic(){
+  $("todayLabel").textContent = today.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+  const s = sessionFor(today);
+  $("phasePill").textContent = s.phase;
+  $("todaySession").textContent = s.session;
+  if(String(s.session).match(/RACE|HYROX|HALF MARATHON/)) $("todaySession").classList.add("race");
+  $("weekInfo").textContent = s.week ? `Plan week ${s.week} of ${PLAN.length}` : "";
+  const dn = medDayNumber(today);
+  $("medDay").textContent = (dn>=1 && dn<=75) ? `Day ${dn} / 75` : (dn<1 ? "Not started" : "Complete");
+  const left = 75 - dn;
+  $("medLeft").textContent = (dn>=1 && dn<=75) ? `${left} day${left===1?'':'s'} left  -  ends Sep 4` : "";
+}
+
+/* ---------------------- DAILY LOG ---------------------- */
+async function loadToday(){
+  const { data } = await sb.from("daily_logs").select("*").eq("log_date", todayISO).maybeSingle();
+  CHK.forEach(k => $(k).checked = data ? !!data[k] : false);
+  $("protein_g").value = data && data.protein_g!=null ? data.protein_g : "";
+  $("calories").value  = data && data.calories!=null ? data.calories : "";
+}
+$("saveDay").onclick = async () => {
+  $("dayMsg").textContent = "Saving...";
+  const row = { log_date: todayISO };
+  CHK.forEach(k => row[k] = $(k).checked);
+  row.protein_g = $("protein_g").value!=="" ? parseInt($("protein_g").value) : null;
+  row.calories  = $("calories").value!==""  ? parseInt($("calories").value)  : null;
+  row.updated_at = new Date().toISOString();
+  const { error } = await sb.from("daily_logs").upsert(row, { onConflict:"user_id,log_date" });
+  $("dayMsg").innerHTML = error ? `<span class="err">${error.message}</span>` : `<span class="ok">Saved.</span>`;
+  if(!error) loadStreak();
+};
+
+/* ---------------------- STREAK DOTS ---------------------- */
+async function loadStreak(){
+  const since = new Date(Date.now() - 6*86400000);
+  const { data } = await sb.from("daily_logs").select("*").gte("log_date", isoDate(since));
+  const map = {}; (data||[]).forEach(r => map[r.log_date]=r);
+  let html="";
+  for(let i=6;i>=0;i--){
+    const d = new Date(Date.now() - i*86400000);
+    const r = map[isoDate(d)];
+    const done = r && CHK.every(k=>r[k]);   // all 5 habits checked = complete day
+    html += `<span class="dot ${done?'on':''}" title="${isoDate(d)}"></span>`;
+  }
+  $("streakDots").innerHTML = html;
+}
+
+/* ---------------------- MEASUREMENTS ---------------------- */
+$("saveMeas").onclick = async () => {
+  $("measMsg").textContent = "Saving...";
+  const num = id => $(id).value!=="" ? parseFloat($(id).value) : null;
+  const row = { taken_on: todayISO, weight:num("m_weight"), waist:num("m_waist"),
+                abs:num("m_abs"), chest:num("m_chest"), bicep:num("m_bicep"), thigh:num("m_thigh") };
+  const { error } = await sb.from("measurements").insert(row);
+  $("measMsg").innerHTML = error ? `<span class="err">${error.message}</span>` : `<span class="ok">Logged.</span>`;
+  if(!error){ loadLastMeas(); }
+};
+async function loadLastMeas(){
+  const { data } = await sb.from("measurements").select("*").order("taken_on",{ascending:false}).limit(1);
+  if(data && data.length){
+    const m=data[0];
+    const parts=[["W",m.weight],["Waist",m.waist],["Abs",m.abs],["Chest",m.chest],["Bicep",m.bicep],["Thigh",m.thigh]]
+      .filter(p=>p[1]!=null).map(p=>`${p[0]} ${p[1]}`).join("  -  ");
+    $("lastMeas").textContent = `Last: ${m.taken_on}   ${parts}`;
+  } else { $("lastMeas").textContent = "No measurements logged yet."; }
+}
+
+/* ---------------------- BOOT ---------------------- */
+if(SUPABASE_URL.startsWith("PASTE")){
+  document.querySelector(".wrap").innerHTML =
+    '<div class="card"><h1>Almost there</h1><p class="muted">Open this file and paste your Supabase Project URL and anon key into the CONFIG block near the bottom of the code, then reload. See SETUP.md.</p></div>';
+} else {
+  refresh();
+}
+</script>
+</body>
+</html>
