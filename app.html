@@ -5,13 +5,15 @@
   <title>Bundled Page</title>
 
   <!-- ===== Supabase cloud sync (mirrors the app's local data to your account) =====
-       Uses plain REST + the login token already in localStorage. No second
-       Supabase client, so nothing can deadlock on the shared auth lock. -->
+       Uses plain REST + the login token already in localStorage. Resilient to the
+       free tier's intermittent 503s: retries writes, flushes on page exit, and never
+       lets the cloud overwrite local edits that haven't synced yet (a "dirty" guard). -->
   <script>
   (function(){
     const REST  = "https://yaohjueiififikjypvuv.supabase.co/rest/v1";
     const ANON  = "sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l";
     const KEY   = "hybrid_tracker_v1";
+    const DIRTY = "hybrid_tracker_dirty";   // "1" => local has edits not yet confirmed saved
     const TABLE = "tracker_state";
 
     // Read the current login token the parent (login page) stored in localStorage.
@@ -30,45 +32,82 @@
     function headers(token, extra){
       return Object.assign({ apikey: ANON, Authorization: "Bearer " + token, "Content-Type": "application/json" }, extra || {});
     }
-    function upsert(token, userId, data){
-      return fetch(REST + "/" + TABLE + "?on_conflict=user_id", {
-        method: "POST",
-        headers: headers(token, { Prefer: "resolution=merge-duplicates" }),
-        body: JSON.stringify({ user_id: userId, data: data, updated_at: new Date().toISOString() })
-      });
+    function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+    // POST with retries to ride out transient 5xx / 429 from the free tier.
+    async function upsert(token, userId, data, opts){
+      opts = opts || {};
+      const body = JSON.stringify({ user_id: userId, data: data, updated_at: new Date().toISOString() });
+      const tries = opts.keepalive ? 1 : 4;
+      for (let i = 0; i < tries; i++){
+        try {
+          const r = await fetch(REST + "/" + TABLE + "?on_conflict=user_id", {
+            method: "POST", keepalive: !!opts.keepalive,
+            headers: headers(token, { Prefer: "resolution=merge-duplicates" }),
+            body: body
+          });
+          if (r.ok) return true;
+          if (r.status < 500 && r.status !== 429) return false;   // 4xx won't fix on retry
+        } catch (e){ /* network blip -> retry */ }
+        if (i < tries - 1) await sleep(600 * (i + 1));            // backoff
+      }
+      return false;
     }
 
     const origSet = localStorage.setItem.bind(localStorage);
-    let ready = false, pending = null, timer = null;
+    let ready = false, timer = null, syncing = false;
 
-    // Mirror local writes up to the cloud (debounced), once the initial pull is done.
+    // Mark every app write dirty and schedule a debounced save.
     localStorage.setItem = function(k, v){
       origSet(k, v);
-      if (k === KEY){ pending = v; schedule(); }
+      if (k === KEY){ origSet(DIRTY, "1"); schedule(); }
     };
-    function schedule(){ clearTimeout(timer); timer = setTimeout(flush, 700); }
+    function schedule(){ clearTimeout(timer); timer = setTimeout(flush, 500); }
     async function flush(){
-      if (!ready){ schedule(); return; }                   // hold writes until cloud pull finishes
+      if (!ready || syncing){ schedule(); return; }
       const { token, userId } = readSession();
-      if (!token || !userId) return;                       // not signed in -> local-only
-      try { await upsert(token, userId, JSON.parse(pending)); }
-      catch (e){ /* keep local copy; will retry on next change */ }
+      if (!token || !userId) return;                         // not signed in -> local-only
+      const snapshot = localStorage.getItem(KEY);
+      syncing = true;
+      let ok = false;
+      try { ok = await upsert(token, userId, JSON.parse(snapshot)); } catch (e){}
+      syncing = false;
+      if (ok){ if (localStorage.getItem(KEY) === snapshot) origSet(DIRTY, ""); }   // clear only if unchanged since
+      else { schedule(); }                                    // failed -> keep dirty, try again
     }
 
-    // Pull the cloud copy into localStorage BEFORE the app reads it.
+    // Best-effort flush when the page is hidden/closing (covers check-then-refresh).
+    function flushNow(){
+      if (localStorage.getItem(DIRTY) !== "1") return;
+      const { token, userId } = readSession();
+      if (!token || !userId) return;
+      const cur = localStorage.getItem(KEY);
+      if (cur) { try { upsert(token, userId, JSON.parse(cur), { keepalive: true }); } catch (e){} }
+    }
+    window.addEventListener("pagehide", flushNow);
+    document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") flushNow(); });
+
+    // Before the app reads localStorage: reconcile with the cloud.
     window.__cloudInit = (async function(){
       try {
         const { token, userId } = readSession();
-        if (!token || !userId) return;                     // not signed in -> local-only
+        if (!token || !userId) return;                       // not signed in -> local-only
+        if (localStorage.getItem(DIRTY) === "1"){
+          // Local has unsynced edits -> push them up; do NOT overwrite with the cloud.
+          const local = localStorage.getItem(KEY);
+          if (local){ const ok = await upsert(token, userId, JSON.parse(local)); if (ok) origSet(DIRTY, ""); }
+          return;
+        }
         const ctrl = new AbortController();
-        const to = setTimeout(function(){ ctrl.abort(); }, 4000);   // never block the app for long
+        const to = setTimeout(function(){ ctrl.abort(); }, 4000);
         const r = await fetch(REST + "/" + TABLE + "?select=data&user_id=eq." + userId, { headers: headers(token), signal: ctrl.signal });
         clearTimeout(to);
         if (r.ok){
           const arr = await r.json();
           if (arr[0] && arr[0].data){ origSet(KEY, JSON.stringify(arr[0].data)); }   // seed local from cloud
-          else { const local = localStorage.getItem(KEY); if (local) await upsert(token, userId, JSON.parse(local)); }   // first run: push local up
+          else { const local = localStorage.getItem(KEY); if (local) await upsert(token, userId, JSON.parse(local)); }
         }
+        // If the read failed, leave local untouched (never clobber).
       } catch (e){ /* fall back to local-only */ }
       finally { ready = true; }
     })();
