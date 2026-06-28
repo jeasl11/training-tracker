@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>diag</title></head>
+<body style="font:18px/1.5 -apple-system,system-ui,sans-serif;padding:20px;max-width:680px">
+<h2>WebKit Sync Diagnostic</h2>
+<div id="out">running…</div>
+<script>
+var out = document.getElementById('out'); out.innerHTML='';
+function line(s){ out.innerHTML += '<p style="margin:6px 0">'+s+'</p>'; }
+
+// Test 1: override localStorage.setItem on the INSTANCE (what the app currently does)
+try {
+  var patched = false;
+  var orig = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(k,v){ patched = true; orig(k,v); };
+  localStorage.setItem('diag_test','1');
+  line('<b>1) instance setItem override:</b> ' + (patched ? 'WORKS' : 'FAILS  &lt;-- the bug'));
+  line('&nbsp;&nbsp;&nbsp;"setItem" became a storage key? ' + (localStorage.getItem('setItem') !== null ? 'YES (WebKit intercepts the assignment)' : 'no'));
+  try { delete localStorage.setItem; } catch(e){}
+} catch(e){ line('1) override threw: '+e.message); }
+
+// Test 2: override on the PROTOTYPE (the proposed fix path)
+try {
+  var p2 = false;
+  var origP = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(k,v){ p2 = true; return origP.call(this,k,v); };
+  localStorage.setItem('diag_test2','1');
+  line('<b>2) prototype setItem override:</b> ' + (p2 ? 'WORKS' : 'FAILS'));
+  Storage.prototype.setItem = origP;
+} catch(e){ line('2) proto threw: '+e.message); }
+
+// Test 3: can WebKit even POST to Supabase? (401 = reachable/works; network error = blocked)
+(async function(){
+  try {
+    var r = await fetch('https://yaohjueiififikjypvuv.supabase.co/rest/v1/tracker_state?on_conflict=user_id', {
+      method:'POST',
+      headers:{ apikey:'sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l', 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates' },
+      body: JSON.stringify({ user_id:'00000000-0000-0000-0000-000000000000', data:{} })
+    });
+    line('<b>3) Supabase POST reachable:</b> HTTP ' + r.status + '  (401 = works, just blocked by RLS)');
+  } catch(e){ line('<b>3) Supabase POST FAILED:</b> ' + e.message + '  &lt;-- network/CORS blocked'); }
+})();
+</script>
+</body></html>
