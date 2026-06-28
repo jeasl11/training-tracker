@@ -55,7 +55,11 @@
 /* ---------------------- CONFIG ---------------------- */
 const SUPABASE_URL  = "https://yaohjueiififikjypvuv.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_uHmKxUaOvi-2CfVUhxtphA_IcXLDP_l";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  // Bypass the navigator Web Lock: it can stay wedged (e.g. a stuck tab) and
+  // make getSession() hang forever, which would leave the page blank.
+  auth: { lock: async (name, acquireTimeout, fn) => await fn() }
+});
 const $ = id => document.getElementById(id);
 
 /* ---------------------- AUTH GATE ---------------------- */
@@ -71,9 +75,30 @@ function showApp(){
   if(!f.getAttribute("src")) f.setAttribute("src", "app.html?v=" + Date.now());   // always load a fresh copy (defeats stale cache)
   f.classList.remove("hidden");
 }
+// Read the stored login directly — synchronous, can never hang.
+function hasLocalSession(){
+  try {
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(/^sb-.*-auth-token$/.test(k)){
+        const s = JSON.parse(localStorage.getItem(k)); const ss = s.currentSession || s;
+        if(ss && ss.access_token){ const exp = ss.expires_at || 0; if(!exp || exp*1000 > Date.now()) return true; }
+      }
+    }
+  } catch(e){}
+  return false;
+}
 async function refresh(){
-  const { data:{ session } } = await sb.auth.getSession();
-  if(session){ showApp(); } else { showLogin(); }
+  // Prefer getSession (handles token refresh), but never let it block the gate.
+  let session = null;
+  try {
+    session = await Promise.race([
+      sb.auth.getSession().then(r => r.data.session),
+      new Promise(res => setTimeout(() => res('__timeout'), 2500))
+    ]);
+  } catch(e){ session = '__timeout'; }
+  if(session === '__timeout'){ if(hasLocalSession()) showApp(); else showLogin(); return; }
+  if(session) showApp(); else showLogin();
 }
 
 $("signIn").onclick = async () => {
